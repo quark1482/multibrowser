@@ -46,6 +46,7 @@ QMainWindow(wgtParent) {
     uiTotalWorkers=0;
     llCurrentLinks.clear();
     plCurrentProxies.clear();
+    slCurrentAgents.clear();
     // UI setup goes here:
     [=]() {
         std::function<void(QTableWidget *,uint,QStringList)> fnConfigTable=[](
@@ -104,6 +105,18 @@ QMainWindow(wgtParent) {
         btnLoadProxies.setText(QStringLiteral("Load"));
         hblProxies.addWidget(&btnLoadProxies);
         vblProxies.addWidget(&txtProxies);
+
+        vblSettings.addLayout(&vblAgents);
+        vblAgents.addLayout(&hblAgents);
+        lblAgents.setSizePolicy(
+            QSizePolicy::Policy::Expanding,
+            QSizePolicy::Policy::Preferred
+            );
+        lblAgents.setText(QStringLiteral("List of user agents:"));
+        hblAgents.addWidget(&lblAgents);
+        btnLoadAgents.setText(QStringLiteral("Load"));
+        hblAgents.addWidget(&btnLoadAgents);
+        vblAgents.addWidget(&txtAgents);
 
         vblSettings.addLayout(&hblOptions);
         hblOptions.addStretch();
@@ -166,6 +179,12 @@ QMainWindow(wgtParent) {
             &MultiBrowser::loadProxiesClicked
         );
         connect(
+            &btnLoadAgents,
+            &QPushButton::clicked,
+            this,
+            &MultiBrowser::loadUserAgentsClicked
+        );
+        connect(
             &btnRun,
             &QPushButton::clicked,
             this,
@@ -190,7 +209,9 @@ void MultiBrowser::browse() {
             }
         if(bFreeLinks) {
             int           iRandomLink,
-                          iRandomProxy;
+                          iRandomProxy,
+                          iRandomAgent;
+            QString       sSelectedAgent=QString();
             LinkRecord    *lrSelectedLink=nullptr;
             ProxyRecord   *prSelectedProxy=nullptr;
             BrowserWorker *bwWorker=nullptr;
@@ -227,7 +248,19 @@ void MultiBrowser::browse() {
                     );
                 prSelectedProxy=&plCurrentProxies[iRandomProxy];
             }
-            bwWorker=new BrowserWorker(this,lrSelectedLink,prSelectedProxy);
+            if(!slCurrentAgents.isEmpty()) {
+                // Picks any user agent. Frequent picks are not important.
+                iRandomAgent=QRandomGenerator::global()->bounded(
+                    slCurrentAgents.count()
+                );
+                sSelectedAgent=slCurrentAgents.at(iRandomAgent);
+            }
+            bwWorker=new BrowserWorker(
+                this,
+                lrSelectedLink,
+                prSelectedProxy,
+                sSelectedAgent
+            );
             bwWorker->setCooldown(
                 QRandomGenerator::global()->bounded(spbCooldown.value()+1)
             );
@@ -309,6 +342,18 @@ ProxyList MultiBrowser::getProxiesFromText(QString sText) {
     return plResult;
 }
 
+QStringList MultiBrowser::getUserAgentsFromText(QString sText) {
+    QStringList slResult={},
+                slAgents=sText.split(
+                    QStringLiteral("\n"),
+                    Qt::SplitBehaviorFlags::SkipEmptyParts
+                );
+    for(const auto &a:slAgents)
+        if(AgentParser::isUserAgent(a.trimmed()))
+            slResult.append(a.trimmed());
+    return slResult;
+}
+
 QString MultiBrowser::getTextFileContents(QString sPrompt) {
     QString sResult=QString(),
             sDefaultFolder,
@@ -362,12 +407,26 @@ QString MultiBrowser::getTextFromProxies(ProxyList plProxies) {
     return sResult;
 }
 
+QString MultiBrowser::getTextFromUserAgents(QStringList slUserAgents) {
+    QString sResult=QString();
+    for(const auto &a:slUserAgents) {
+        if(!sResult.isEmpty())
+            sResult.append(QStringLiteral("\n"));
+        sResult.append(a);
+    }
+    return sResult;
+}
+
 void MultiBrowser::loadLinksClicked(bool) {
     txtLinks.setPlainText(this->getTextFileContents(lblLinks.text()));
 }
 
 void MultiBrowser::loadProxiesClicked(bool) {
     txtProxies.setPlainText(this->getTextFileContents(lblProxies.text()));
+}
+
+void MultiBrowser::loadUserAgentsClicked(bool) {
+    txtAgents.setPlainText(this->getTextFileContents(lblAgents.text()));
 }
 
 void MultiBrowser::runClicked(bool) {
@@ -384,10 +443,13 @@ void MultiBrowser::runClicked(bool) {
         btnRun.setText(QStringLiteral("Run"));
     }
     else {
+        int iRun=QMessageBox::StandardButton::No;
         llCurrentLinks=this->getLinksFromText(txtLinks.toPlainText());
         plCurrentProxies=this->getProxiesFromText(txtProxies.toPlainText());
+        slCurrentAgents=this->getUserAgentsFromText(txtAgents.toPlainText());
         txtLinks.setPlainText(this->getTextFromLinks(llCurrentLinks));
         txtProxies.setPlainText(this->getTextFromProxies(plCurrentProxies));
+        txtAgents.setPlainText(this->getTextFromUserAgents(slCurrentAgents));
         if(llCurrentLinks.isEmpty())
             QMessageBox::critical(
                 this,
@@ -395,6 +457,28 @@ void MultiBrowser::runClicked(bool) {
                 QStringLiteral("At least one link is required")
             );
         else {
+            iRun=QMessageBox::StandardButton::Yes;
+            if(plCurrentProxies.isEmpty())
+                iRun=QMessageBox::warning(
+                    this,
+                    QStringLiteral("Warning"),
+                    QStringLiteral("Not a single proxy was entered.\n"
+                                   "Proceed anyway?"),
+                    QMessageBox::StandardButton::Yes|QMessageBox::StandardButton::No,
+                    QMessageBox::StandardButton::No
+                );
+            if(QMessageBox::StandardButton::Yes==iRun)
+                if(slCurrentAgents.isEmpty())
+                    iRun=QMessageBox::warning(
+                        this,
+                        QStringLiteral("Warning"),
+                        QStringLiteral("It's advised to use real agents.\n"
+                                       "Proceed anyway?"),
+                        QMessageBox::StandardButton::Yes|QMessageBox::StandardButton::No,
+                        QMessageBox::StandardButton::No
+                    );
+        }
+        if(QMessageBox::StandardButton::Yes==iRun) {
             bRunning=true;
             twgLinkStats.clearContents();
             twgLinkStats.setRowCount(llCurrentLinks.count());
@@ -519,12 +603,14 @@ void MultiBrowser::workerStatusChanged(QString sStatus) {
 
 BrowserWorker::BrowserWorker(QObject     *objParent,
                              LinkRecord  *lrNewLink,
-                             ProxyRecord *prNewProxy):
+                             ProxyRecord *prNewProxy,
+                             QString     sNewAgent):
 QThread(objParent) {
     uiCooldown=0;
     sError.clear();
     lrLink=lrNewLink;
     prProxy=prNewProxy;
+    sAgent=sNewAgent;
     rmMode=BrowserWorker::RunMode::RM_NETWORK;
 }
 
@@ -584,6 +670,11 @@ void BrowserWorker::runWithWebEngine() {
                 QStringLiteral("-p"),
                 ProxyParser::getTextFromProxy(prProxy->npxProxy)
             });
+        if(!sAgent.isEmpty())
+            slBrowserParams.append({
+                QStringLiteral("-a"),
+                sAgent
+            });
         proBrowserApp.start(sBrowserPath,slBrowserParams);
         proBrowserApp.waitForFinished(-1);
         if(QProcess::ExitStatus::NormalExit==proBrowserApp.exitStatus()) {
@@ -626,6 +717,11 @@ void BrowserWorker::runWithNetwork() {
             namManager.setProxy(prProxy->npxProxy);
         namManager.setTransferTimeout();
         nrqRequest.setUrl(lrLink->urlLink);
+        if(!sAgent.isEmpty())
+            nrqRequest.setHeader(
+                QNetworkRequest::KnownHeaders::UserAgentHeader,
+                sAgent
+            );
         nrpReply=namManager.get(nrqRequest);
         while(!nrpReply->isFinished())
             QApplication::processEvents();
@@ -647,7 +743,11 @@ void BrowserWorker::runWithNetwork() {
 }
 
 void BrowserWorker::showCurrentIP(QString sHTML) {
-    if(nullptr!=lrLink&&nullptr!=prProxy) {
+    if(nullptr!=lrLink) {
+        // Verifies that the anonymizing part (from proxies and user agents) ...
+        // ... is actually working, by showing the client's name/IP and the ...
+        // ... detected browser in the Debug window. -Only for tests-.
+        // Works for IPChicken only. More sites to come.
         if(!lrLink->urlLink.host().compare(
             QStringLiteral("www.ipchicken.com"),
             Qt::CaseSensitivity::CaseInsensitive
@@ -658,6 +758,12 @@ void BrowserWorker::showCurrentIP(QString sHTML) {
             rxmIP=rxIP.match(sHTML);
             if(rxmIP.hasCaptured(1))
                 qDebug() << QStringLiteral("Name/IP: %1").arg(rxmIP.captured(1));
+            QRegularExpression      rxAgent;
+            QRegularExpressionMatch rxmAgent;
+            rxAgent.setPattern(QStringLiteral("Browser:\\n(.*) "));
+            rxmAgent=rxAgent.match(sHTML);
+            if(rxmAgent.hasCaptured(1))
+                qDebug() << QStringLiteral("User-Agent: %1").arg(rxmAgent.captured(1));
         }
     }
 }

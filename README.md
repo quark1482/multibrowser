@@ -14,6 +14,10 @@ separated by new lines as well.
 Be sure to fully-qualify them, including authentication details if required.
 E.g.: ` http://usr:pwd@localhost:8080 `. **Do not forget the port. It is mandatory**.
 
+- Optionally, enter a list of user-agent strings, separated by new lines.
+There are samples everywhere. Google for them or use existing compilations like
+https://www.useragents.me or https://gist.github.com/CryptoCloud9.
+
 - Set a number of running threads. The allowed maximum is 16.
 This is a big modifier in terms of CPU and memory.
 
@@ -40,7 +44,7 @@ fast and uses the lowest possible amount of memory.
 ToDo's
 ------
 
-- [ ] Spoof User-Agent strings
+- [x] Spoof User-Agent strings
 - [ ] Inject JS code on demand
 
 

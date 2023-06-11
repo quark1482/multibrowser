@@ -17,6 +17,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(PROJECT_SOURCES
     main.cpp
     multibrowser.h multibrowser.cpp
+    agentparser.h agentparser.cpp
     proxyparser.h proxyparser.cpp
 )
 

@@ -32,6 +32,7 @@ bool browse(QUrl          urlURL,
                            jsnResponse;
     UrlResponseInterceptor uriInterceptor;
     sJSON.clear();
+    // Includes the passed parameters in the response as well.
     jsnParams[QStringLiteral("url")]=urlURL.toString();
     jsnParams[QStringLiteral("proxy")]=ProxyParser::getTextFromProxy(npxProxy);
     jsnParams[QStringLiteral("agent")]=sAgent;
@@ -43,6 +44,15 @@ bool browse(QUrl          urlURL,
     QNetworkProxy::setApplicationProxy(npxProxy);
     if(!sAgent.isEmpty())
         webPage.profile()->setHttpUserAgent(sAgent);
+    QObject::connect(
+        &webPage,
+        &QWebEnginePage::certificateError,
+        [](const QWebEngineCertificateError &webErr) {
+            // Accepts every certificate, ignoring the possible errors, ...
+            // ... and makes the program able to use non-HTTPS proxies.
+            const_cast<QWebEngineCertificateError &>(webErr).acceptCertificate();
+        }
+    );
     QObject::connect(
         &webPage,
         &QWebEnginePage::loadFinished,

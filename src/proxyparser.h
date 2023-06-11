@@ -1,6 +1,7 @@
 #ifndef PROXYPARSER_H
 #define PROXYPARSER_H
 
+#include <QtCore>
 #include <QtNetwork>
 
 class ProxyParser {

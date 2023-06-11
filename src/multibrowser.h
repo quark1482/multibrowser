@@ -6,6 +6,7 @@
 #include <QtNetwork>
 #include <QMainWindow>
 #include <QApplication>
+#include "agentparser.h"
 #include "proxyparser.h"
 
 using LinkRecord=struct {
@@ -35,15 +36,18 @@ public:
     MultiBrowser(QWidget * =nullptr);
     ~MultiBrowser();
 private:
-    void      browse();
-    LinkList  getLinksFromText(QString);
-    ProxyList getProxiesFromText(QString);
-    QString   getTextFileContents(QString);
-    QString   getTextFromLinks(LinkList);
-    QString   getTextFromProxies(ProxyList);
+    void        browse();
+    LinkList    getLinksFromText(QString);
+    ProxyList   getProxiesFromText(QString);
+    QStringList getUserAgentsFromText(QString);
+    QString     getTextFileContents(QString);
+    QString     getTextFromLinks(LinkList);
+    QString     getTextFromProxies(ProxyList);
+    QString     getTextFromUserAgents(QStringList);
 private slots:
     void loadLinksClicked(bool);
     void loadProxiesClicked(bool);
+    void loadUserAgentsClicked(bool);
     void runClicked(bool);
     void workerFinished();
     void workerStarted();
@@ -53,6 +57,7 @@ private:
     uint           uiTotalWorkers;
     LinkList       llCurrentLinks;
     ProxyList      plCurrentProxies;
+    QStringList    slCurrentAgents;
     // UI widgets go here:
     QWidget        wgtMain;
         QVBoxLayout    vblMain;
@@ -69,6 +74,11 @@ private:
                                 QLabel         lblProxies;
                                 QPushButton    btnLoadProxies;
                             QPlainTextEdit txtProxies;
+                        QVBoxLayout    vblAgents;
+                            QHBoxLayout    hblAgents;
+                                QLabel         lblAgents;
+                                QPushButton    btnLoadAgents;
+                            QPlainTextEdit txtAgents;
                         QHBoxLayout    hblOptions;
                             QHBoxLayout    hblOptionThreads;
                                 QLabel         lblThreads;
@@ -99,7 +109,7 @@ public:
         RM_WEB_ENGINE,
         RM_NETWORK
     };
-    BrowserWorker(QObject * =nullptr,LinkRecord * =nullptr,ProxyRecord * =nullptr);
+    BrowserWorker(QObject * =nullptr,LinkRecord * =nullptr,ProxyRecord * =nullptr,QString=QString());
     LinkRecord  *getLinkRecord();
     ProxyRecord *getProxyRecord();
     void        run() override;
@@ -109,7 +119,8 @@ signals:
     void statusChanged(QString);
 private:
     uint        uiCooldown;
-    QString     sError;
+    QString     sError,
+                sAgent;
     LinkRecord  *lrLink;
     ProxyRecord *prProxy;
     RunMode     rmMode;
